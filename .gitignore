@@ -1,0 +1,60 @@
+# ─────────────────────────────────────────────
+# KasirKu — .gitignore monorepo
+# ATURAN KEAMANAN: semua secret & .env JANGAN pernah di-commit
+# ─────────────────────────────────────────────
+
+# Secrets / environment (WAJIB)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ── Node / Next.js (apps/admin-web) ──
+node_modules/
+.next/
+out/
+build/
+dist/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ── Flutter / Dart (apps/kasir-mobile) ──
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+*.iml
+.gradle/
+# Android
+apps/kasir-mobile/android/.gradle/
+apps/kasir-mobile/android/app/debug/
+apps/kasir-mobile/android/app/profile/
+apps/kasir-mobile/android/app/release/
+apps/kasir-mobile/android/key.properties
+**/android/**/gradle-wrapper.jar
+**/android/local.properties
+# iOS
+apps/kasir-mobile/ios/Pods/
+apps/kasir-mobile/ios/.symlinks/
+apps/kasir-mobile/ios/Flutter/Flutter.framework
+apps/kasir-mobile/ios/Flutter/Flutter.podspec
+
+# ── OS / Editor ──
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# ── Supabase (local) ──
+supabase/.branches/
+supabase/.temp/

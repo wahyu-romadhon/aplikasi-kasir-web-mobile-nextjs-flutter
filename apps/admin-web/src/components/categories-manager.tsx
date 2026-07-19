@@ -1,0 +1,190 @@
+"use client";
+
+import { useState } from "react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { toast } from "sonner";
+
+type Category = { id: string; name: string; created_at: string };
+
+export function CategoriesManager({
+  storeId,
+  initial,
+}: {
+  storeId: string;
+  initial: Category[];
+}) {
+  const supabase = createClient();
+  const [rows, setRows] = useState<Category[]>(initial);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Category | null>(null);
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function reload() {
+    const { data } = await supabase
+      .from("categories")
+      .select("id, name, created_at")
+      .order("name");
+    setRows(data ?? []);
+  }
+
+  function openCreate() {
+    setEditing(null);
+    setName("");
+    setOpen(true);
+  }
+
+  function openEdit(c: Category) {
+    setEditing(c);
+    setName(c.name);
+    setOpen(true);
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setSaving(true);
+    const { error } = editing
+      ? await supabase.from("categories").update({ name: trimmed }).eq("id", editing.id)
+      : await supabase.from("categories").insert({ store_id: storeId, name: trimmed });
+    setSaving(false);
+    if (error) {
+      toast.error("Gagal menyimpan", { description: error.message });
+      return;
+    }
+    toast.success(editing ? "Kategori diperbarui" : "Kategori ditambahkan");
+    setOpen(false);
+    reload();
+  }
+
+  async function handleDelete(c: Category) {
+    if (!window.confirm(`Hapus kategori "${c.name}"?`)) return;
+    const { error } = await supabase.from("categories").delete().eq("id", c.id);
+    if (error) {
+      toast.error("Gagal menghapus", { description: error.message });
+      return;
+    }
+    toast.success("Kategori dihapus");
+    reload();
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-[22px] font-semibold">Kategori</h1>
+          <p className="text-sm text-muted-foreground">
+            Kelompokkan produk agar mudah dicari.
+          </p>
+        </div>
+        <Button onClick={openCreate}>
+          <Plus />
+          Tambah Kategori
+        </Button>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Daftar Kategori ({rows.length})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {rows.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              Belum ada kategori. Klik “Tambah Kategori”.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nama</TableHead>
+                  <TableHead className="w-24 text-right">Aksi</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((c) => (
+                  <TableRow key={c.id}>
+                    <TableCell className="font-medium">{c.name}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon-sm" onClick={() => openEdit(c)}>
+                          <Pencil />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-danger hover:text-danger"
+                          onClick={() => handleDelete(c)}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <form onSubmit={handleSave}>
+            <DialogHeader>
+              <DialogTitle>{editing ? "Edit Kategori" : "Tambah Kategori"}</DialogTitle>
+              <DialogDescription>
+                Nama kategori untuk mengelompokkan produk.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2 py-4">
+              <Label htmlFor="cat-name">Nama Kategori</Label>
+              <Input
+                id="cat-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="mis. Minuman"
+                autoFocus
+                required
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                Batal
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? "Menyimpan…" : "Simpan"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

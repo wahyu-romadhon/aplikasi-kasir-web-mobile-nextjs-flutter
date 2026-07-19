@@ -1,0 +1,46 @@
+name: kasir_mobile
+description: "KasirKu — app kasir (POS) offline-first."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # Backend & auth
+  supabase_flutter: ^2.5.0
+  http: ^1.2.0
+
+  # Penyimpanan lokal (offline-first)
+  sqflite: ^2.3.0
+  path: ^1.9.0
+  path_provider: ^2.1.0
+  shared_preferences: ^2.2.0
+
+  # Config & utilitas
+  flutter_dotenv: ^5.1.0
+  connectivity_plus: ^6.0.0
+  uuid: ^4.4.0
+  intl: ^0.20.0
+  crypto: ^3.0.3
+
+  # State management
+  flutter_riverpod: ^2.5.0
+
+  # Cetak struk thermal (Fase 2 — struk):
+  # esc_pos_utils_plus: ^2.0.3
+  # print_bluetooth_thermal: ^1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - .env

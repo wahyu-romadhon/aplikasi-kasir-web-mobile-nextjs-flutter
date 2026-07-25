@@ -14,6 +14,32 @@ class StoreInfo {
   const StoreInfo({required this.name, required this.footer});
 }
 
+class QrisMethod {
+  final String label;
+  final String imageUrl;
+  const QrisMethod({required this.label, required this.imageUrl});
+}
+
+/// Metode QRIS/e-wallet aktif milik toko (untuk ditampilkan ke pembeli).
+final paymentMethodsProvider = FutureProvider<List<QrisMethod>>((ref) async {
+  final sb = Supabase.instance.client;
+  try {
+    final rows = await sb
+        .from('store_payment_methods')
+        .select('label, image_url')
+        .eq('is_active', true)
+        .order('sort_order');
+    return (rows as List)
+        .map((r) => QrisMethod(
+              label: r['label'] as String,
+              imageUrl: r['image_url'] as String,
+            ))
+        .toList();
+  } catch (_) {
+    return const []; // tabel belum ada / offline → hanya tunai
+  }
+});
+
 /// Info toko (nama + footer struk) untuk mencetak struk.
 final storeInfoProvider = FutureProvider<StoreInfo>((ref) async {
   const fallback = StoreInfo(name: 'KasirKu', footer: 'Terima kasih!');

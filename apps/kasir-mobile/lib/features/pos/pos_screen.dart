@@ -606,24 +606,17 @@ class _PayResult {
   const _PayResult(this.paid, this.method);
 }
 
-class _PaymentSheet extends StatefulWidget {
+class _PaymentSheet extends ConsumerStatefulWidget {
   final double total;
   const _PaymentSheet({required this.total});
 
   @override
-  State<_PaymentSheet> createState() => _PaymentSheetState();
+  ConsumerState<_PaymentSheet> createState() => _PaymentSheetState();
 }
 
-class _PaymentSheetState extends State<_PaymentSheet> {
+class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
   final _paidCtrl = TextEditingController();
-  String _method = 'cash';
-
-  static const _methods = {
-    'cash': 'Tunai',
-    'qris': 'QRIS',
-    'transfer': 'Transfer',
-    'debit': 'Debit',
-  };
+  QrisMethod? _qris; // null = tunai
 
   @override
   void dispose() {
@@ -641,6 +634,8 @@ class _PaymentSheetState extends State<_PaymentSheet> {
   @override
   Widget build(BuildContext context) {
     final total = widget.total;
+    final methods = ref.watch(paymentMethodsProvider).valueOrNull ?? const <QrisMethod>[];
+    final isCash = _qris == null;
     final change = _paid - total;
     final enough = _paid >= total;
 
@@ -691,71 +686,128 @@ class _PaymentSheetState extends State<_PaymentSheet> {
             ),
           ),
           const SizedBox(height: AppSpacing.lg),
-          Wrap(
-            spacing: AppSpacing.sm,
-            children: _methods.entries.map((e) {
-              return ChoiceChip(
-                label: Text(e.value),
-                selected: _method == e.key,
-                onSelected: (_) => setState(() => _method = e.key),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          TextField(
-            controller: _paidCtrl,
-            keyboardType: TextInputType.number,
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(
-              labelText: 'Uang diterima',
-              prefixText: 'Rp ',
-            ),
-            style: const TextStyle(
-              fontSize: 20,
-              fontFeatures: [FontFeature.tabularFigures()],
-            ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
+          // Pilih metode: Tunai + QRIS yang diupload admin.
           Wrap(
             spacing: AppSpacing.sm,
             children: [
-              ActionChip(
-                label: const Text('Uang Pas'),
-                onPressed: () => _setPaid(total),
+              ChoiceChip(
+                label: const Text('Tunai'),
+                selected: isCash,
+                onSelected: (_) => setState(() => _qris = null),
               ),
-              for (final n in [20000, 50000, 100000])
+              for (final m in methods)
+                ChoiceChip(
+                  label: Text(m.label),
+                  selected: _qris?.imageUrl == m.imageUrl,
+                  onSelected: (_) => setState(() => _qris = m),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          if (isCash) ...[
+            TextField(
+              controller: _paidCtrl,
+              keyboardType: TextInputType.number,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Uang diterima',
+                prefixText: 'Rp ',
+              ),
+              style: const TextStyle(
+                fontSize: 20,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Wrap(
+              spacing: AppSpacing.sm,
+              children: [
                 ActionChip(
-                  label: Text(formatRupiah(n)),
-                  onPressed: () => _setPaid(n.toDouble()),
+                  label: const Text('Uang Pas'),
+                  onPressed: () => _setPaid(total),
                 ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Kembalian'),
-              Text(
-                formatRupiah(change < 0 ? 0 : change),
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  fontFeatures: [FontFeature.tabularFigures()],
+                for (final n in [20000, 50000, 100000])
+                  ActionChip(
+                    label: Text(formatRupiah(n)),
+                    onPressed: () => _setPaid(n.toDouble()),
+                  ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Kembalian'),
+                Text(
+                  formatRupiah(change < 0 ? 0 : change),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            SizedBox(
+              height: 52,
+              child: ElevatedButton(
+                onPressed: enough
+                    ? () => Navigator.pop(context, _PayResult(_paid, 'cash'))
+                    : null,
+                child: const Text('Konfirmasi Bayar',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              ),
+            ),
+          ] else ...[
+            // Tampilkan QRIS untuk di-scan pembeli.
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusControl),
+                  child: Image.network(
+                    _qris!.imageUrl,
+                    width: 240,
+                    height: 240,
+                    fit: BoxFit.contain,
+                    loadingBuilder: (context, child, progress) => progress == null
+                        ? child
+                        : const SizedBox(
+                            width: 240,
+                            height: 240,
+                            child: Center(child: CircularProgressIndicator()),
+                          ),
+                    errorBuilder: (_, _, _) => const SizedBox(
+                      width: 240,
+                      height: 240,
+                      child: Center(child: Text('Gambar QRIS gagal dimuat')),
+                    ),
+                  ),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          SizedBox(
-            height: 52,
-            child: ElevatedButton(
-              onPressed: enough
-                  ? () => Navigator.pop(context, _PayResult(_paid, _method))
-                  : null,
-              child: const Text('Konfirmasi Bayar',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             ),
-          ),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              'Minta pembeli scan QRIS di atas (${_qris!.label})',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            SizedBox(
+              height: 52,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(context, _PayResult(total, 'qris')),
+                child: const Text('Konfirmasi Lunas',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              ),
+            ),
+          ],
         ],
       ),
     );

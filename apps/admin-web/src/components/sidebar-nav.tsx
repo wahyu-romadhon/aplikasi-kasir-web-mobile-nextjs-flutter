@@ -10,6 +10,7 @@ import {
   ReceiptText,
   Boxes,
   History,
+  QrCode,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +21,7 @@ const items = [
   { href: "/stock", label: "Stok", icon: Boxes },
   { href: "/transactions", label: "Transaksi", icon: ReceiptText },
   { href: "/shifts", label: "Shift", icon: History },
+  { href: "/payment-methods", label: "Pembayaran", icon: QrCode },
   { href: "/reports", label: "Laporan", icon: BarChart3 },
 ];
 

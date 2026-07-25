@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Store } from "lucide-react";
+import { Store, ShieldCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { isSuperAdmin } from "@/lib/superadmin";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { LogoutButton } from "@/components/logout-button";
 
@@ -52,6 +54,22 @@ export default async function DashboardLayout({
           <nav className="flex-1 py-2">
             <SidebarNav />
           </nav>
+
+          {/* Panel Vendor — hanya super-admin */}
+          {isSuperAdmin(user.email) && (
+            <Link
+              href="/vendor"
+              title="Panel Vendor"
+              className="flex h-11 items-center border-t border-border text-sm font-medium text-secondary transition-colors hover:bg-muted"
+            >
+              <span className="flex w-16 shrink-0 items-center justify-center">
+                <ShieldCheck className="size-5" />
+              </span>
+              <span className="whitespace-nowrap opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                Panel Vendor
+              </span>
+            </Link>
+          )}
 
           {/* Footer toko */}
           <div className="flex h-12 shrink-0 items-center border-t border-border text-muted-foreground">

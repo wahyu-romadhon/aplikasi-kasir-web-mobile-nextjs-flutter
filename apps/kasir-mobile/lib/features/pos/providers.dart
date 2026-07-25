@@ -164,7 +164,7 @@ Future<void> checkout({
   const discount = 0.0;
   final total = subtotal - discount + tax;
   final change = paid - total;
-  final now = DateTime.now().toIso8601String();
+  final now = DateTime.now().toUtc().toIso8601String(); // simpan UTC (tz-aware)
 
   await db.insert('transactions', {
     'local_id': localId,

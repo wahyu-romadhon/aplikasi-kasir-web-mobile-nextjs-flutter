@@ -48,10 +48,10 @@ Future<void> openShift(double openingCash) async {
 
 /// Tutup shift. Kasir HANYA mengirim setoran (closing_cash) — `expected_cash`
 /// TIDAK dihitung/disimpan di sini (dihitung admin saat rekonsiliasi).
-Future<void> closeShift(String shiftId, double closingCash) async {
+Future<void> closeShift(String shiftId, double? closingCash) async {
   final sb = Supabase.instance.client;
   await sb.from('shifts').update({
-    'closing_cash': closingCash,
+    'closing_cash': closingCash, // null bila kasir tak mengisi setoran
     'closed_at': DateTime.now().toUtc().toIso8601String(),
   }).eq('id', shiftId);
 }

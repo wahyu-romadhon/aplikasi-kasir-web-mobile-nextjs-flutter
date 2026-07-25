@@ -9,17 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatRupiah } from "@/lib/format";
-
-function formatWaktu(iso: string | null): string {
-  if (!iso) return "-";
-  return new Intl.DateTimeFormat("id-ID", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(iso));
-}
+import { formatRupiah, formatWaktu } from "@/lib/format";
 
 export default async function ShiftsPage() {
   const supabase = await createClient();

@@ -31,7 +31,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   }
 
   Future<void> _closeShift() async {
-    final closing = await showModalBottomSheet<double>(
+    final result = await showModalBottomSheet<_CloseResult>(
       context: context,
       backgroundColor: AppColors.surface,
       isScrollControlled: true,
@@ -40,13 +40,16 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       ),
       builder: (_) => _CloseShiftSheet(openingCash: widget.shift.openingCash),
     );
-    if (closing == null || !mounted) return;
+    if (result == null || !mounted) return; // sheet ditutup tanpa konfirmasi
+    _openLoading();
     try {
       // Pastikan transaksi ter-sync dulu sebelum shift ditutup.
       await ref.read(syncServiceProvider).syncPendingTransactions();
-      await closeShift(widget.shift.id, closing);
+      await closeShift(widget.shift.id, result.closingCash);
+      _dismissLoading();
       ref.invalidate(activeShiftProvider); // ShiftGate → kembali ke buka shift
     } catch (e) {
+      _dismissLoading();
       if (mounted) _snack('Gagal tutup shift: $e');
     }
   }
@@ -72,6 +75,33 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         behavior: SnackBarBehavior.floating,
         duration: const Duration(milliseconds: 1400),
       ));
+  }
+
+  /// Tampilkan overlay loading (blocking). Tutup dengan [_dismissLoading].
+  void _openLoading() {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(22),
+              child: SizedBox(
+                width: 40,
+                height: 40,
+                child: CircularProgressIndicator(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _dismissLoading() {
+    if (mounted) Navigator.of(context, rootNavigator: true).pop();
   }
 
   void _addToCart(Product p) {
@@ -211,13 +241,18 @@ class _PosScreenState extends ConsumerState<PosScreen> {
 
     // Salin item sebelum keranjang dikosongkan (untuk struk).
     final items = List<CartItem>.from(ref.read(cartProvider));
-    await checkout(
-      ref: ref,
-      items: items,
-      paid: result.paid,
-      paymentMethod: result.method,
-      shiftId: widget.shift.id,
-    );
+    _openLoading();
+    try {
+      await checkout(
+        ref: ref,
+        items: items,
+        paid: result.paid,
+        paymentMethod: result.method,
+        shiftId: widget.shift.id,
+      );
+    } finally {
+      _dismissLoading();
+    }
     ref.read(cartProvider.notifier).clear();
     ref.invalidate(productsProvider); // refresh stok di grid (#8)
 
@@ -1200,6 +1235,11 @@ class _ShiftSummarySheet extends StatelessWidget {
 
 /// Sheet tutup shift. Kasir hanya memasukkan setoran (uang di laci).
 /// TIDAK menampilkan expected_cash maupun selisih (rahasia — hanya admin).
+class _CloseResult {
+  final double? closingCash;
+  const _CloseResult(this.closingCash);
+}
+
 class _CloseShiftSheet extends StatefulWidget {
   final double openingCash;
   const _CloseShiftSheet({required this.openingCash});
@@ -1264,7 +1304,7 @@ class _CloseShiftSheetState extends State<_CloseShiftSheet> {
             inputFormatters: [ThousandsInputFormatter()],
             onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(
-              labelText: 'Setoran (uang di laci sekarang)',
+              labelText: 'Setoran / uang tunai di laci (opsional)',
               prefixText: 'Rp ',
             ),
             style: const TextStyle(
@@ -1272,16 +1312,19 @@ class _CloseShiftSheetState extends State<_CloseShiftSheet> {
               fontFeatures: [FontFeature.tabularFigures()],
             ),
           ),
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: AppSpacing.sm),
           const Text(
-            'Hitung total uang tunai di laci, lalu masukkan di atas.',
+            'Hitung uang tunai fisik di laci lalu isi — dipakai admin untuk cek selisih (uang kurang/lebih). Boleh dikosongkan bila tak perlu.',
             style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
           ),
           const SizedBox(height: AppSpacing.lg),
           SizedBox(
             height: 52,
             child: ElevatedButton(
-              onPressed: () => Navigator.pop(context, _closing),
+              onPressed: () => Navigator.pop(
+                context,
+                _CloseResult(_ctrl.text.trim().isEmpty ? null : _closing),
+              ),
               child: const Text('Tutup Shift',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             ),

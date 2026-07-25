@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { formatRupiah } from "@/lib/format";
+import { formatRupiah, formatWaktu } from "@/lib/format";
 
 type Tx = {
   id: string;
@@ -41,16 +41,6 @@ const METHOD_LABEL: Record<string, string> = {
   transfer: "Transfer",
   debit: "Debit",
 };
-
-function formatWaktu(iso: string): string {
-  return new Intl.DateTimeFormat("id-ID", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(iso));
-}
 
 export function TransactionsView({
   initial,

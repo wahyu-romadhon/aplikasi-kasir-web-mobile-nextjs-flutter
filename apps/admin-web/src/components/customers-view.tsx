@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { UserPlus, MoreVertical, Store as StoreIcon, Pencil, Trash2 } from "lucide-react";
+import {
+  UserPlus,
+  ChevronDown,
+  Store as StoreIcon,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -56,9 +62,12 @@ function daysLeft(validUntil: string | null): number | null {
 function statusInfo(c: Customer): { label: string; cls: string } {
   if (c.isVendor) return { label: "Vendor", cls: "bg-[#1F2421] text-white" };
   const d = daysLeft(c.validUntil);
-  if (c.status === "suspended") return { label: "Suspended", cls: "bg-danger/10 text-danger" };
-  if (d != null && d < 0) return { label: "Expired", cls: "bg-danger/10 text-danger" };
-  if (c.status === "trial") return { label: "Trial", cls: "bg-[#F6E9E2] text-secondary" };
+  if (c.status === "suspended")
+    return { label: "Suspended", cls: "bg-danger/10 text-danger" };
+  if (d != null && d < 0)
+    return { label: "Expired", cls: "bg-danger/10 text-danger" };
+  if (c.status === "trial")
+    return { label: "Trial", cls: "bg-[#F6E9E2] text-secondary" };
   return { label: "Aktif", cls: "bg-primary-light text-primary" };
 }
 
@@ -71,7 +80,13 @@ const emptyForm = {
   trial_days: "3",
 };
 
-const emptyEdit = { store_id: "", store_name: "", owner_name: "", owner_email: "", owner_password: "" };
+const emptyEdit = {
+  store_id: "",
+  store_name: "",
+  owner_name: "",
+  owner_email: "",
+  owner_password: "",
+};
 
 export function CustomersView({ initial }: { initial: Customer[] }) {
   const router = useRouter();
@@ -87,7 +102,9 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
   const total = customers.length;
   const aktif = customers.filter((c) => statusInfo(c).label === "Aktif").length;
   const trial = customers.filter((c) => statusInfo(c).label === "Trial").length;
-  const expired = customers.filter((c) => ["Expired", "Suspended"].includes(statusInfo(c).label)).length;
+  const expired = customers.filter((c) =>
+    ["Expired", "Suspended"].includes(statusInfo(c).label),
+  ).length;
 
   async function act(c: Customer, action: string, days?: number) {
     if (!c.licenseId) {
@@ -108,7 +125,9 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
       toast.success("Lisensi diperbarui");
       router.refresh();
     } catch (err) {
-      toast.error("Gagal", { description: err instanceof Error ? err.message : undefined });
+      toast.error("Gagal", {
+        description: err instanceof Error ? err.message : undefined,
+      });
     } finally {
       setBusy(null);
     }
@@ -116,7 +135,11 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
 
   async function addCustomer(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.store_name.trim() || !form.owner_email.trim() || !form.owner_password) {
+    if (
+      !form.store_name.trim() ||
+      !form.owner_email.trim() ||
+      !form.owner_password
+    ) {
       toast.error("Nama toko, email, dan password wajib diisi");
       return;
     }
@@ -125,7 +148,10 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
       const res = await fetch("/api/vendor/customer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, trial_days: parseInt(form.trial_days, 10) || 3 }),
+        body: JSON.stringify({
+          ...form,
+          trial_days: parseInt(form.trial_days, 10) || 3,
+        }),
       });
       if (!res.ok) {
         const b = await res.json().catch(() => ({}));
@@ -234,7 +260,9 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
           <Card key={s.label} className="shadow-sm">
             <CardContent className="py-5">
               <p className="text-sm text-muted-foreground">{s.label}</p>
-              <p className={`text-2xl font-semibold tabular-nums ${s.cls}`}>{s.value}</p>
+              <p className={`text-2xl font-semibold tabular-nums ${s.cls}`}>
+                {s.value}
+              </p>
             </CardContent>
           </Card>
         ))}
@@ -245,7 +273,9 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
           {initial.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
               <StoreIcon className="size-8" />
-              <p className="text-sm">Belum ada pelanggan. Klik “Tambah Pelanggan”.</p>
+              <p className="text-sm">
+                Belum ada pelanggan. Klik “Tambah Pelanggan”.
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -280,11 +310,15 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
                         </TableCell>
                         <TableCell className="text-right">
                           {c.isVendor ? (
-                            <span className="text-muted-foreground">∞ Abadi</span>
+                            <span className="text-muted-foreground">
+                              ∞ - Lifetime
+                            </span>
                           ) : d == null ? (
                             "-"
                           ) : d < 0 ? (
-                            <span className="font-semibold text-danger">habis</span>
+                            <span className="font-semibold text-danger">
+                              habis
+                            </span>
                           ) : (
                             <span
                               className={
@@ -312,17 +346,17 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
                                 <DropdownMenuTrigger
                                   render={
                                     <Button
-                                      variant="ghost"
-                                      size="icon-sm"
-                                      title="Kelola lisensi"
+                                      variant="outline"
+                                      size="sm"
                                       disabled={busy === c.storeId}
                                     />
                                   }
                                 >
-                                  <MoreVertical />
+                                  Lisensi
+                                  <ChevronDown />
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                  <DropdownMenuLabel>Lisensi</DropdownMenuLabel>
+                                  <DropdownMenuLabel>Kelola Lisensi</DropdownMenuLabel>
                                   <DropdownMenuItem onClick={() => act(c, "extend", 7)}>
                                     Perpanjang 7 hari
                                   </DropdownMenuItem>
@@ -377,7 +411,9 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
                 <Input
                   id="c-store"
                   value={form.store_name}
-                  onChange={(e) => setForm({ ...form, store_name: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, store_name: e.target.value })
+                  }
                   placeholder="mis. Warung Bu Ani"
                   autoFocus
                   required
@@ -388,7 +424,9 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
                 <Input
                   id="c-owner"
                   value={form.owner_name}
-                  onChange={(e) => setForm({ ...form, owner_name: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, owner_name: e.target.value })
+                  }
                   placeholder="mis. Bu Ani"
                 />
               </div>
@@ -398,7 +436,9 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
                   id="c-email"
                   type="email"
                   value={form.owner_email}
-                  onChange={(e) => setForm({ ...form, owner_email: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, owner_email: e.target.value })
+                  }
                   placeholder="owner@toko.com"
                   required
                 />
@@ -408,7 +448,9 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
                 <Input
                   id="c-pass"
                   value={form.owner_password}
-                  onChange={(e) => setForm({ ...form, owner_password: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, owner_password: e.target.value })
+                  }
                   placeholder="min. 6 karakter"
                   required
                 />
@@ -453,12 +495,18 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
                   type="number"
                   min="1"
                   value={form.trial_days}
-                  onChange={(e) => setForm({ ...form, trial_days: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, trial_days: e.target.value })
+                  }
                 />
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setOpen(false)}
+              >
                 Batal
               </Button>
               <Button type="submit" disabled={saving}>
@@ -476,7 +524,8 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
             <DialogHeader>
               <DialogTitle>Edit Pelanggan</DialogTitle>
               <DialogDescription>
-                Ubah data toko/owner. Kosongkan password bila tak ingin menggantinya.
+                Ubah data toko/owner. Kosongkan password bila tak ingin
+                menggantinya.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
@@ -485,7 +534,9 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
                 <Input
                   id="e-store"
                   value={editForm.store_name}
-                  onChange={(e) => setEditForm({ ...editForm, store_name: e.target.value })}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, store_name: e.target.value })
+                  }
                   required
                 />
               </div>
@@ -494,7 +545,9 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
                 <Input
                   id="e-owner"
                   value={editForm.owner_name}
-                  onChange={(e) => setEditForm({ ...editForm, owner_name: e.target.value })}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, owner_name: e.target.value })
+                  }
                 />
               </div>
               <div className="space-y-2">
@@ -503,7 +556,9 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
                   id="e-email"
                   type="email"
                   value={editForm.owner_email}
-                  onChange={(e) => setEditForm({ ...editForm, owner_email: e.target.value })}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, owner_email: e.target.value })
+                  }
                 />
               </div>
               <div className="space-y-2">
@@ -511,13 +566,19 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
                 <Input
                   id="e-pass"
                   value={editForm.owner_password}
-                  onChange={(e) => setEditForm({ ...editForm, owner_password: e.target.value })}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, owner_password: e.target.value })
+                  }
                   placeholder="biarkan kosong = tetap"
                 />
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditOpen(false)}
+              >
                 Batal
               </Button>
               <Button type="submit" disabled={editing}>

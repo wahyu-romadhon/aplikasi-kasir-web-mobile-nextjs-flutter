@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Ban, Receipt } from "lucide-react";
+import { Ban, Receipt, Eye } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -131,7 +131,7 @@ export function TransactionsView({
                     <TableHead>Metode</TableHead>
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="w-20 text-right">Aksi</TableHead>
+                    <TableHead className="w-24 text-right">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -153,7 +153,8 @@ export function TransactionsView({
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" onClick={() => openDetail(t)}>
+                        <Button variant="outline" size="sm" onClick={() => openDetail(t)}>
+                          <Eye />
                           Detail
                         </Button>
                       </TableCell>

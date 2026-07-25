@@ -1,5 +1,6 @@
-/** Batas produk untuk akun terbatas (Trial & Demo). Ubah angka ini bila perlu. */
-export const LIMITED_PRODUCT_MAX = 15;
+/** Batas untuk akun terbatas (Trial & Demo). Ubah angka ini bila perlu. */
+export const LIMITED_PRODUCT_MAX = 6;
+export const LIMITED_CATEGORY_MAX = 2;
 
 /** Akun Trial & Demo dibatasi fiturnya. */
 export function isLimitedPlan(

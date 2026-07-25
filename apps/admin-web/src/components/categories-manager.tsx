@@ -35,9 +35,13 @@ type Category = { id: string; name: string; created_at: string };
 export function CategoriesManager({
   storeId,
   initial,
+  categoryLimit,
+  planLabel,
 }: {
   storeId: string;
   initial: Category[];
+  categoryLimit?: number | null;
+  planLabel?: string;
 }) {
   const supabase = createClient();
   const [rows, setRows] = useState<Category[]>(initial);
@@ -45,6 +49,7 @@ export function CategoriesManager({
   const [editing, setEditing] = useState<Category | null>(null);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
+  const atLimit = categoryLimit != null && rows.length >= categoryLimit;
 
   async function reload() {
     const { data } = await supabase
@@ -55,6 +60,12 @@ export function CategoriesManager({
   }
 
   function openCreate() {
+    if (atLimit) {
+      toast.error(`Batas kategori akun ${planLabel} tercapai (${categoryLimit})`, {
+        description: "Upgrade ke langganan berbayar untuk menambah lebih banyak.",
+      });
+      return;
+    }
     setEditing(null);
     setName("");
     setOpen(true);
@@ -70,6 +81,10 @@ export function CategoriesManager({
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
+    if (!editing && categoryLimit != null && rows.length >= categoryLimit) {
+      toast.error(`Batas kategori akun ${planLabel} tercapai (${categoryLimit})`);
+      return;
+    }
     setSaving(true);
     const { error } = editing
       ? await supabase.from("categories").update({ name: trimmed }).eq("id", editing.id)
@@ -116,11 +131,26 @@ export function CategoriesManager({
             Kelompokkan produk agar mudah dicari.
           </p>
         </div>
-        <Button onClick={openCreate}>
+        <Button onClick={openCreate} disabled={atLimit}>
           <Plus />
           Tambah Kategori
         </Button>
       </div>
+
+      {categoryLimit != null && (
+        <div
+          className={
+            "rounded-xl border px-4 py-3 text-sm " +
+            (atLimit
+              ? "border-warning/30 bg-warning/10"
+              : "border-border bg-muted/40")
+          }
+        >
+          Akun <strong>{planLabel}</strong> dibatasi maksimal{" "}
+          <strong>{categoryLimit} kategori</strong> — terpakai {rows.length}/{categoryLimit}.
+          {atLimit && " Batas tercapai. Upgrade untuk menambah lagi."}
+        </div>
+      )}
 
       <Card className="shadow-sm">
         <CardHeader>

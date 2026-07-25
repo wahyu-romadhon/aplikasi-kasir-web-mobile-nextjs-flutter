@@ -6,6 +6,7 @@ class Product {
   final double price;
   final int stock;
   final String? categoryId;
+  final String? imageUrl;
   final bool isActive;
 
   const Product({
@@ -16,6 +17,7 @@ class Product {
     required this.price,
     required this.stock,
     this.categoryId,
+    this.imageUrl,
     required this.isActive,
   });
 
@@ -27,6 +29,7 @@ class Product {
         price: (m['price'] as num).toDouble(),
         stock: (m['stock'] as num).toInt(),
         categoryId: m['category_id'] as String?,
+        imageUrl: m['image_url'] as String?,
         isActive: (m['is_active'] as int) == 1,
       );
 }

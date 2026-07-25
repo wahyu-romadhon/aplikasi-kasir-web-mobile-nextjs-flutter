@@ -31,7 +31,11 @@ dependencies:
   # State management
   flutter_riverpod: ^2.5.0
 
-  # Cetak struk thermal (Fase 2 — struk):
+  # Struk (PDF shareable — printer thermal menyusul)
+  pdf: ^3.11.0
+  printing: ^5.13.0
+
+  # Cetak struk thermal (nanti — butuh printer fisik):
   # esc_pos_utils_plus: ^2.0.3
   # print_bluetooth_thermal: ^1.1.0
 

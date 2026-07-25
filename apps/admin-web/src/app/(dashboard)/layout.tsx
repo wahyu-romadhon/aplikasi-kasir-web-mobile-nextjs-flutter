@@ -33,31 +33,49 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-svh bg-background">
-      {/* Sidebar */}
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-surface md:flex">
-        <div className="flex items-center gap-2 border-b border-border px-5 py-4">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
-            K
+      {/* Sidebar — rail ikon yang mengembang saat hover (w-16 → w-60) */}
+      <aside className="hidden w-16 shrink-0 md:block">
+        <div className="group fixed inset-y-0 left-0 z-20 flex w-16 flex-col overflow-hidden border-r border-border bg-surface transition-[width] duration-200 ease-out hover:w-60 hover:shadow-xl">
+          {/* Logo — tinggi sama dengan header (h-16) agar garis sejajar */}
+          <div className="flex h-16 shrink-0 items-center border-b border-border">
+            <div className="flex w-16 shrink-0 items-center justify-center">
+              <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
+                K
+              </div>
+            </div>
+            <span className="whitespace-nowrap text-lg font-semibold opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+              KasirKu
+            </span>
           </div>
-          <span className="font-semibold">KasirKu</span>
-        </div>
-        <div className="flex-1 p-3">
-          <SidebarNav />
-        </div>
-        <div className="border-t border-border p-4 text-xs text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <Store className="size-3.5" />
-            <span className="truncate">{store?.name ?? "Toko"}</span>
+
+          {/* Navigasi */}
+          <nav className="flex-1 py-2">
+            <SidebarNav />
+          </nav>
+
+          {/* Footer toko */}
+          <div className="flex h-12 shrink-0 items-center border-t border-border text-muted-foreground">
+            <div className="flex w-16 shrink-0 items-center justify-center">
+              <Store className="size-4" />
+            </div>
+            <span className="truncate whitespace-nowrap text-xs opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+              {store?.name ?? "Toko"}
+            </span>
           </div>
         </div>
       </aside>
 
       {/* Konten */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-border bg-surface px-6 py-3">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{profile.full_name}</p>
-            <p className="text-xs text-muted-foreground capitalize">{profile.role}</p>
+        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-border bg-surface/95 px-6 backdrop-blur supports-backdrop-filter:bg-surface/80">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex size-9 items-center justify-center rounded-full bg-primary-light text-sm font-semibold text-primary">
+              {(profile.full_name?.[0] ?? "U").toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">{profile.full_name}</p>
+              <p className="text-xs text-muted-foreground capitalize">{profile.role}</p>
+            </div>
           </div>
           <LogoutButton />
         </header>

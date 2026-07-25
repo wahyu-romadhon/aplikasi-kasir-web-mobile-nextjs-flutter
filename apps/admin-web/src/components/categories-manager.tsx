@@ -85,6 +85,18 @@ export function CategoriesManager({
   }
 
   async function handleDelete(c: Category) {
+    // Cegah hapus kategori yang masih dipakai produk.
+    const { count } = await supabase
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .eq("category_id", c.id);
+    if ((count ?? 0) > 0) {
+      toast.error("Tidak bisa dihapus", {
+        description: `Masih ada ${count} produk memakai kategori "${c.name}". Pindahkan atau hapus produk itu dulu.`,
+      });
+      return;
+    }
+
     if (!window.confirm(`Hapus kategori "${c.name}"?`)) return;
     const { error } = await supabase.from("categories").delete().eq("id", c.id);
     if (error) {
@@ -110,7 +122,7 @@ export function CategoriesManager({
         </Button>
       </div>
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
           <CardTitle className="text-base">Daftar Kategori ({rows.length})</CardTitle>
         </CardHeader>

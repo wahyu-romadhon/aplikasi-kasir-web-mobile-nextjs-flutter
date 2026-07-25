@@ -4,11 +4,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_spacing.dart';
 import '../../core/utils/format.dart';
+import '../receipt/receipt_service.dart';
+import '../shift/shift.dart';
 import 'models.dart';
 import 'providers.dart';
 
 class PosScreen extends ConsumerStatefulWidget {
-  const PosScreen({super.key});
+  final Shift shift;
+  const PosScreen({super.key, required this.shift});
 
   @override
   ConsumerState<PosScreen> createState() => _PosScreenState();
@@ -18,12 +21,55 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   @override
   void initState() {
     super.initState();
-    // Coba sinkronkan transaksi yang belum ter-upload saat app dibuka.
-    Future.microtask(() => ref.read(syncServiceProvider).syncPendingTransactions());
+    // Saat app dibuka: push transaksi tertunda + tarik produk terbaru.
+    Future.microtask(() => refreshProducts(ref));
   }
 
   Future<void> _logout() async {
     await Supabase.instance.client.auth.signOut();
+  }
+
+  Future<void> _closeShift() async {
+    final closing = await showModalBottomSheet<double>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _CloseShiftSheet(openingCash: widget.shift.openingCash),
+    );
+    if (closing == null || !mounted) return;
+    try {
+      // Pastikan transaksi ter-sync dulu sebelum shift ditutup.
+      await ref.read(syncServiceProvider).syncPendingTransactions();
+      await closeShift(widget.shift.id, closing);
+      ref.invalidate(activeShiftProvider); // ShiftGate → kembali ke buka shift
+    } catch (e) {
+      if (mounted) _snack('Gagal tutup shift: $e');
+    }
+  }
+
+  void _snack(String message, {Color color = AppColors.danger}) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(milliseconds: 1400),
+      ));
+  }
+
+  void _addToCart(Product p) {
+    if (p.stock <= 0) {
+      _snack('${p.name} stok habis');
+      return;
+    }
+    final ok = ref.read(cartProvider.notifier).add(p);
+    if (!ok) {
+      _snack('Stok ${p.name} tidak cukup (tersisa ${p.stock})');
+    }
   }
 
   @override
@@ -34,13 +80,35 @@ class _PosScreenState extends ConsumerState<PosScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Kasir'),
+        title: const Text('Kasir', style: TextStyle(fontWeight: FontWeight.w700)),
         backgroundColor: AppColors.surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0.5,
         actions: [
-          IconButton(
-            tooltip: 'Keluar',
-            icon: const Icon(Icons.logout),
-            onPressed: _logout,
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (v) {
+              if (v == 'close') _closeShift();
+              if (v == 'logout') _logout();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'close',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.lock_clock, color: AppColors.secondary),
+                  title: Text('Tutup Shift'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'logout',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.logout),
+                  title: Text('Keluar'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -48,44 +116,38 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => _ErrorState(
           message: 'Gagal memuat produk.\n$e',
-          onRetry: () => ref.invalidate(productsProvider),
+          onRetry: () => refreshProducts(ref),
         ),
         data: (products) {
           if (products.isEmpty) {
             return _ErrorState(
-              message: 'Belum ada produk aktif.\nTambahkan produk lewat dashboard admin.',
-              onRetry: () => ref.invalidate(productsProvider),
+              message:
+                  'Belum ada produk aktif.\nTambahkan produk lewat dashboard admin.',
+              onRetry: () => refreshProducts(ref),
               icon: Icons.inventory_2_outlined,
             );
           }
           return RefreshIndicator(
-            onRefresh: () async => ref.invalidate(productsProvider),
+            onRefresh: () => refreshProducts(ref),
             child: GridView.builder(
               padding: const EdgeInsets.all(AppSpacing.md),
-              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 220,
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 190,
                 mainAxisSpacing: AppSpacing.md,
                 crossAxisSpacing: AppSpacing.md,
-                childAspectRatio: 1,
+                childAspectRatio: 0.74,
               ),
               itemCount: products.length,
               itemBuilder: (context, i) => _ProductCard(
                 product: products[i],
-                onTap: () {
-                  ref.read(cartProvider.notifier).add(products[i]);
-                },
+                onTap: () => _addToCart(products[i]),
               ),
             ),
           );
         },
       ),
-      bottomNavigationBar: count == 0
-          ? null
-          : _CartBar(
-              count: count,
-              total: total,
-              onPressed: _openCart,
-            ),
+      bottomNavigationBar:
+          count == 0 ? null : _CartBar(count: count, total: total, onPressed: _openCart),
     );
   }
 
@@ -95,7 +157,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       backgroundColor: AppColors.surface,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppSpacing.radiusCard)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (_) => const _CartSheet(),
     );
@@ -109,39 +171,69 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       backgroundColor: AppColors.surface,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppSpacing.radiusCard)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (_) => _PaymentSheet(total: total),
     );
     if (result == null || !mounted) return;
 
-    final items = ref.read(cartProvider);
+    // Salin item sebelum keranjang dikosongkan (untuk struk).
+    final items = List<CartItem>.from(ref.read(cartProvider));
     await checkout(
       ref: ref,
       items: items,
       paid: result.paid,
       paymentMethod: result.method,
+      shiftId: widget.shift.id,
     );
     ref.read(cartProvider.notifier).clear();
-    if (mounted) _showSuccess(total: total, paid: result.paid);
+    ref.invalidate(productsProvider); // refresh stok di grid (#8)
+
+    final sale = ReceiptData(
+      items: items,
+      total: total,
+      paid: result.paid,
+      change: result.paid - total,
+      method: result.method,
+      dateTime: DateTime.now(),
+    );
+    if (mounted) _showSuccess(sale);
   }
 
-  void _showSuccess({required double total, required double paid}) {
+  Future<void> _shareReceipt(ReceiptData sale) async {
+    try {
+      final store = await ref.read(storeInfoProvider.future);
+      await shareReceiptPdf(
+        data: sale,
+        storeName: store.name,
+        footer: store.footer,
+      );
+    } catch (e) {
+      if (mounted) _snack('Gagal membuat struk: $e');
+    }
+  }
+
+  void _showSuccess(ReceiptData sale) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        icon: const Icon(Icons.check_circle, color: AppColors.success, size: 48),
+        icon: const Icon(Icons.check_circle, color: AppColors.success, size: 52),
         title: const Text('Transaksi Berhasil'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _row('Total', formatRupiah(total)),
-            _row('Dibayar', formatRupiah(paid)),
+            _row('Total', formatRupiah(sale.total)),
+            _row('Dibayar', formatRupiah(sale.paid)),
             const Divider(),
-            _row('Kembalian', formatRupiah(paid - total), bold: true),
+            _row('Kembalian', formatRupiah(sale.change), bold: true),
           ],
         ),
         actions: [
+          OutlinedButton.icon(
+            onPressed: () => _shareReceipt(sale),
+            icon: const Icon(Icons.share_outlined, size: 18),
+            label: const Text('Bagikan Struk'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Transaksi Baru'),
@@ -171,6 +263,32 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   }
 }
 
+/// Gambar produk dengan placeholder & penanganan error.
+class _ProductImage extends StatelessWidget {
+  final Product product;
+  const _ProductImage({required this.product});
+
+  @override
+  Widget build(BuildContext context) {
+    final placeholder = Container(
+      color: AppColors.primaryLight,
+      alignment: Alignment.center,
+      child: const Icon(Icons.inventory_2_outlined,
+          color: AppColors.primary, size: 32),
+    );
+    if (product.imageUrl == null || product.imageUrl!.isEmpty) {
+      return placeholder;
+    }
+    return Image.network(
+      product.imageUrl!,
+      fit: BoxFit.cover,
+      loadingBuilder: (context, child, progress) =>
+          progress == null ? child : Container(color: AppColors.primaryLight),
+      errorBuilder: (_, _, _) => placeholder,
+    );
+  }
+}
+
 class _ProductCard extends StatelessWidget {
   final Product product;
   final VoidCallback onTap;
@@ -178,36 +296,79 @@ class _ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.md),
+    final habis = product.stock <= 0;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: habis ? null : onTap,
+          borderRadius: BorderRadius.circular(14),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(
-                child: Text(
-                  product.name,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _ProductImage(product: product),
+                      if (habis)
+                        Container(
+                          color: Colors.black.withValues(alpha: 0.45),
+                          alignment: Alignment.center,
+                          child: const Text('HABIS',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1)),
+                        ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                formatRupiah(product.price),
-                style: const TextStyle(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.w700,
-                  fontFeatures: [FontFeature.tabularFigures()],
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      product.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 14, height: 1.2),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      formatRupiah(product.price),
+                      style: const TextStyle(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w700,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                    Text(
+                      'Stok: ${product.stock}',
+                      style: TextStyle(
+                        color: habis ? AppColors.danger : AppColors.textSecondary,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              Text(
-                'Stok: ${product.stock}',
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
               ),
             ],
           ),
@@ -228,26 +389,46 @@ class _CartBar extends StatelessWidget {
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.md),
-        child: SizedBox(
-          height: 56,
-          child: ElevatedButton(
-            onPressed: onPressed,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('$count item'),
-                Text(
-                  formatRupiah(total),
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    fontFeatures: [FontFeature.tabularFigures()],
+        child: Material(
+          color: AppColors.primary,
+          borderRadius: BorderRadius.circular(16),
+          elevation: 3,
+          shadowColor: AppColors.primary.withValues(alpha: 0.4),
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.shopping_cart_outlined,
+                        color: Colors.white, size: 20),
                   ),
-                ),
-                const Row(
-                  children: [Text('Bayar'), Icon(Icons.arrow_forward)],
-                ),
-              ],
+                  const SizedBox(width: AppSpacing.md),
+                  Text('$count item',
+                      style: const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.w500)),
+                  const Spacer(),
+                  Text(
+                    formatRupiah(total),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  const Icon(Icons.arrow_forward, color: Colors.white),
+                ],
+              ),
             ),
           ),
         ),
@@ -272,6 +453,17 @@ class _CartSheet extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -281,7 +473,8 @@ class _CartSheet extends ConsumerWidget {
                     cart.clear();
                     Navigator.pop(context);
                   },
-                  child: const Text('Kosongkan', style: TextStyle(color: AppColors.danger)),
+                  child: const Text('Kosongkan',
+                      style: TextStyle(color: AppColors.danger)),
                 ),
               ],
             ),
@@ -310,9 +503,22 @@ class _CartSheet extends ConsumerWidget {
                       _QtyStepper(
                         qty: c.qty,
                         onMinus: () => cart.decrement(c.product.id),
-                        onPlus: () => cart.increment(c.product.id),
+                        onPlus: () {
+                          final ok = cart.increment(c.product.id);
+                          if (!ok) {
+                            ScaffoldMessenger.of(context)
+                              ..hideCurrentSnackBar()
+                              ..showSnackBar(SnackBar(
+                                content: Text(
+                                    'Stok ${c.product.name} tidak cukup (tersisa ${c.product.stock})'),
+                                backgroundColor: AppColors.danger,
+                                behavior: SnackBarBehavior.floating,
+                                duration: const Duration(milliseconds: 1400),
+                              ));
+                          }
+                        },
                       ),
-                      const SizedBox(width: AppSpacing.md),
+                      const SizedBox(width: AppSpacing.sm),
                       SizedBox(
                         width: 90,
                         child: Text(
@@ -346,10 +552,11 @@ class _CartSheet extends ConsumerWidget {
             ),
             const SizedBox(height: AppSpacing.lg),
             SizedBox(
-              height: AppSpacing.touchTarget,
+              height: 52,
               child: ElevatedButton(
                 onPressed: items.isEmpty ? null : () => Navigator.pop(context, true),
-                child: const Text('Lanjut Bayar'),
+                child: const Text('Lanjut Bayar',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
               ),
             ),
           ],
@@ -363,7 +570,8 @@ class _QtyStepper extends StatelessWidget {
   final int qty;
   final VoidCallback onMinus;
   final VoidCallback onPlus;
-  const _QtyStepper({required this.qty, required this.onMinus, required this.onPlus});
+  const _QtyStepper(
+      {required this.qty, required this.onMinus, required this.onPlus});
 
   @override
   Widget build(BuildContext context) {
@@ -373,6 +581,7 @@ class _QtyStepper extends StatelessWidget {
           onPressed: onMinus,
           icon: const Icon(Icons.remove_circle_outline),
           color: AppColors.danger,
+          visualDensity: VisualDensity.compact,
         ),
         SizedBox(
           width: 24,
@@ -384,6 +593,7 @@ class _QtyStepper extends StatelessWidget {
           onPressed: onPlus,
           icon: const Icon(Icons.add_circle_outline),
           color: AppColors.primary,
+          visualDensity: VisualDensity.compact,
         ),
       ],
     );
@@ -438,13 +648,24 @@ class _PaymentSheetState extends State<_PaymentSheet> {
       padding: EdgeInsets.only(
         left: AppSpacing.lg,
         right: AppSpacing.lg,
-        top: AppSpacing.lg,
+        top: AppSpacing.md,
         bottom: MediaQuery.of(context).viewInsets.bottom + AppSpacing.lg,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: AppSpacing.md),
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
           Text('Pembayaran', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppSpacing.md),
           Container(
@@ -526,12 +747,106 @@ class _PaymentSheetState extends State<_PaymentSheet> {
           ),
           const SizedBox(height: AppSpacing.lg),
           SizedBox(
-            height: AppSpacing.touchTarget,
+            height: 52,
             child: ElevatedButton(
               onPressed: enough
                   ? () => Navigator.pop(context, _PayResult(_paid, _method))
                   : null,
-              child: const Text('Konfirmasi Bayar'),
+              child: const Text('Konfirmasi Bayar',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Sheet tutup shift. Kasir hanya memasukkan setoran (uang di laci).
+/// TIDAK menampilkan expected_cash maupun selisih (rahasia — hanya admin).
+class _CloseShiftSheet extends StatefulWidget {
+  final double openingCash;
+  const _CloseShiftSheet({required this.openingCash});
+
+  @override
+  State<_CloseShiftSheet> createState() => _CloseShiftSheetState();
+}
+
+class _CloseShiftSheetState extends State<_CloseShiftSheet> {
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  double get _closing => double.tryParse(_ctrl.text.replaceAll('.', '')) ?? 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: AppSpacing.lg,
+        right: AppSpacing.lg,
+        top: AppSpacing.md,
+        bottom: MediaQuery.of(context).viewInsets.bottom + AppSpacing.lg,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: AppSpacing.md),
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          Text('Tutup Shift', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Modal awal', style: TextStyle(color: AppColors.textSecondary)),
+              Text(formatRupiah(widget.openingCash),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  )),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          TextField(
+            controller: _ctrl,
+            keyboardType: TextInputType.number,
+            autofocus: true,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              labelText: 'Setoran (uang di laci sekarang)',
+              prefixText: 'Rp ',
+            ),
+            style: const TextStyle(
+              fontSize: 20,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          const Text(
+            'Hitung total uang tunai di laci, lalu masukkan di atas.',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          SizedBox(
+            height: 52,
+            child: ElevatedButton(
+              onPressed: () => Navigator.pop(context, _closing),
+              child: const Text('Tutup Shift',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             ),
           ),
         ],

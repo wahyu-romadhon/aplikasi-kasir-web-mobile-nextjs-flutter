@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Plus, Pencil, Trash2, ImageIcon, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { formatRupiah } from "@/lib/format";
+import { compressImage, uploadProductImage } from "@/lib/image";
 
 type Category = { id: string; name: string };
 type Product = {
@@ -38,6 +39,7 @@ type Product = {
   barcode: string | null;
   is_active: boolean;
   category_id: string | null;
+  image_url: string | null;
 };
 
 const emptyForm = {
@@ -70,6 +72,12 @@ export function ProductsManager({
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
 
+  // Gambar
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
   const categoryName = useMemo(() => {
     const map = new Map(categories.map((c) => [c.id, c.name]));
     return (id: string | null) => (id ? map.get(id) ?? "-" : "-");
@@ -78,14 +86,22 @@ export function ProductsManager({
   async function reload() {
     const { data } = await supabase
       .from("products")
-      .select("id, name, price, cost_price, stock, sku, barcode, is_active, category_id")
+      .select("id, name, price, cost_price, stock, sku, barcode, is_active, category_id, image_url")
       .order("name");
     setRows(data ?? []);
+  }
+
+  function resetImage() {
+    setImageUrl(null);
+    setImageFile(null);
+    setImagePreview(null);
+    if (fileRef.current) fileRef.current.value = "";
   }
 
   function openCreate() {
     setEditing(null);
     setForm(emptyForm);
+    resetImage();
     setOpen(true);
   }
 
@@ -101,7 +117,26 @@ export function ProductsManager({
       barcode: p.barcode ?? "",
       is_active: p.is_active,
     });
+    setImageUrl(p.image_url);
+    setImageFile(null);
+    setImagePreview(p.image_url);
     setOpen(true);
+  }
+
+  async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const compressed = await compressImage(file, { maxSize: 500, quality: 0.7 });
+      setImageFile(compressed);
+      setImagePreview(URL.createObjectURL(compressed));
+      const kb = Math.round(compressed.size / 1024);
+      toast.success(`Gambar siap (${kb} KB)`);
+    } catch (err) {
+      toast.error("Gagal memproses gambar", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    }
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -113,28 +148,37 @@ export function ProductsManager({
       return;
     }
     setSaving(true);
-    const payload = {
-      store_id: storeId,
-      name: form.name.trim(),
-      category_id: form.category_id || null,
-      price,
-      cost_price: Number(form.cost_price) || 0,
-      stock: parseInt(form.stock, 10) || 0,
-      sku: form.sku.trim() || null,
-      barcode: form.barcode.trim() || null,
-      is_active: form.is_active,
-    };
-    const { error } = editing
-      ? await supabase.from("products").update(payload).eq("id", editing.id)
-      : await supabase.from("products").insert(payload);
-    setSaving(false);
-    if (error) {
-      toast.error("Gagal menyimpan", { description: error.message });
-      return;
+    try {
+      let finalImageUrl = imageUrl;
+      if (imageFile) {
+        finalImageUrl = await uploadProductImage(imageFile);
+      }
+      const payload = {
+        store_id: storeId,
+        name: form.name.trim(),
+        category_id: form.category_id || null,
+        price,
+        cost_price: Number(form.cost_price) || 0,
+        stock: parseInt(form.stock, 10) || 0,
+        sku: form.sku.trim() || null,
+        barcode: form.barcode.trim() || null,
+        is_active: form.is_active,
+        image_url: finalImageUrl,
+      };
+      const { error } = editing
+        ? await supabase.from("products").update(payload).eq("id", editing.id)
+        : await supabase.from("products").insert(payload);
+      if (error) throw new Error(error.message);
+      toast.success(editing ? "Produk diperbarui" : "Produk ditambahkan");
+      setOpen(false);
+      reload();
+    } catch (err) {
+      toast.error("Gagal menyimpan", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setSaving(false);
     }
-    toast.success(editing ? "Produk diperbarui" : "Produk ditambahkan");
-    setOpen(false);
-    reload();
   }
 
   async function handleDelete(p: Product) {
@@ -154,7 +198,7 @@ export function ProductsManager({
         <div>
           <h1 className="text-[22px] font-semibold">Produk</h1>
           <p className="text-sm text-muted-foreground">
-            Kelola daftar produk, harga, dan stok.
+            Kelola daftar produk, harga, stok, dan gambar.
           </p>
         </div>
         <Button onClick={openCreate}>
@@ -163,7 +207,7 @@ export function ProductsManager({
         </Button>
       </div>
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
           <CardTitle className="text-base">Daftar Produk ({rows.length})</CardTitle>
         </CardHeader>
@@ -177,7 +221,7 @@ export function ProductsManager({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Nama</TableHead>
+                    <TableHead>Produk</TableHead>
                     <TableHead>Kategori</TableHead>
                     <TableHead className="text-right">Harga Jual</TableHead>
                     <TableHead className="text-right">Modal</TableHead>
@@ -189,7 +233,12 @@ export function ProductsManager({
                 <TableBody>
                   {rows.map((p) => (
                     <TableRow key={p.id}>
-                      <TableCell className="font-medium">{p.name}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Thumb url={p.image_url} />
+                          <span className="font-medium">{p.name}</span>
+                        </div>
+                      </TableCell>
                       <TableCell className="text-muted-foreground">
                         {categoryName(p.category_id)}
                       </TableCell>
@@ -199,9 +248,7 @@ export function ProductsManager({
                       <TableCell className="text-right tabular-nums text-muted-foreground">
                         {formatRupiah(p.cost_price)}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {p.stock}
-                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{p.stock}</TableCell>
                       <TableCell>
                         {p.is_active ? (
                           <Badge className="bg-primary-light text-primary">Aktif</Badge>
@@ -242,6 +289,54 @@ export function ProductsManager({
             </DialogHeader>
 
             <div className="grid gap-4 py-4">
+              {/* Gambar */}
+              <div className="space-y-2">
+                <Label>Gambar Produk</Label>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    className="relative flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-dashed border-input bg-muted/40 text-muted-foreground transition-colors hover:border-ring"
+                  >
+                    {imagePreview ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={imagePreview} alt="" className="size-full object-cover" />
+                    ) : (
+                      <ImageIcon className="size-6" />
+                    )}
+                  </button>
+                  <div className="space-y-1 text-sm">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fileRef.current?.click()}
+                    >
+                      {imagePreview ? "Ganti Gambar" : "Pilih Gambar"}
+                    </Button>
+                    {imagePreview && (
+                      <button
+                        type="button"
+                        onClick={resetImage}
+                        className="ml-2 inline-flex items-center gap-1 text-xs text-danger"
+                      >
+                        <X className="size-3" /> Hapus
+                      </button>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Otomatis dikompres kecil (WebP).
+                    </p>
+                  </div>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleImageChange}
+                  />
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="p-name">Nama Produk</Label>
                 <Input
@@ -346,5 +441,19 @@ export function ProductsManager({
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function Thumb({ url }: { url: string | null }) {
+  if (!url) {
+    return (
+      <div className="flex size-10 items-center justify-center rounded-md bg-muted text-muted-foreground">
+        <ImageIcon className="size-4" />
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={url} alt="" className="size-10 rounded-md border border-border object-cover" />
   );
 }

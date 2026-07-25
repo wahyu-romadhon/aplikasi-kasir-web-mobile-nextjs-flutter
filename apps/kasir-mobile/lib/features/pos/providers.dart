@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/database/local_db.dart';
 import '../../core/database/sync_service.dart';
@@ -7,14 +8,37 @@ import 'models.dart';
 
 final syncServiceProvider = Provider<SyncService>((ref) => SyncService());
 
-/// Produk aktif dari SQLite (setelah best-effort pull dari server).
+class StoreInfo {
+  final String name;
+  final String footer;
+  const StoreInfo({required this.name, required this.footer});
+}
+
+/// Info toko (nama + footer struk) untuk mencetak struk.
+final storeInfoProvider = FutureProvider<StoreInfo>((ref) async {
+  const fallback = StoreInfo(name: 'KasirKu', footer: 'Terima kasih!');
+  final sb = Supabase.instance.client;
+  final uid = sb.auth.currentUser?.id;
+  if (uid == null) return fallback;
+  final prof =
+      await sb.from('profiles').select('store_id').eq('id', uid).maybeSingle();
+  final storeId = prof?['store_id'];
+  if (storeId == null) return fallback;
+  final s = await sb
+      .from('stores')
+      .select('name, receipt_footer')
+      .eq('id', storeId)
+      .maybeSingle();
+  return StoreInfo(
+    name: (s?['name'] as String?) ?? 'KasirKu',
+    footer: (s?['receipt_footer'] as String?) ?? 'Terima kasih!',
+  );
+});
+
+/// Produk aktif dari SQLite (cache lokal). Tidak melakukan pull di sini supaya
+/// refresh setelah transaksi menampilkan stok lokal yang sudah dikurangi
+/// (pull dipisah ke [refreshProducts], hanya saat buka app & tarik-refresh).
 final productsProvider = FutureProvider<List<Product>>((ref) async {
-  final sync = ref.read(syncServiceProvider);
-  try {
-    await sync.pullProducts();
-  } catch (_) {
-    // offline / gagal → pakai cache SQLite yang ada
-  }
   final db = await LocalDb.instance;
   final rows = await db.query(
     'products',
@@ -24,25 +48,47 @@ final productsProvider = FutureProvider<List<Product>>((ref) async {
   return rows.map((r) => Product.fromMap(r)).toList();
 });
 
+/// Push transaksi tertunda → tarik produk terbaru dari server → refresh grid.
+/// Urutan penting: sync dulu (agar stok server terpotong), baru pull.
+Future<void> refreshProducts(WidgetRef ref) async {
+  final sync = ref.read(syncServiceProvider);
+  try {
+    await sync.syncPendingTransactions();
+    await sync.pullProducts();
+  } catch (_) {
+    // offline / gagal → pakai cache SQLite yang ada
+  }
+  ref.invalidate(productsProvider);
+}
+
 class CartNotifier extends StateNotifier<List<CartItem>> {
   CartNotifier() : super(const []);
 
-  void add(Product p) {
+  /// Tambah 1 item. Return false bila melebihi stok yang tersedia.
+  bool add(Product p) {
     final idx = state.indexWhere((c) => c.product.id == p.id);
+    final currentQty = idx >= 0 ? state[idx].qty : 0;
+    if (currentQty + 1 > p.stock) return false;
     if (idx >= 0) {
       final updated = [...state];
-      updated[idx] = updated[idx].copyWith(qty: updated[idx].qty + 1);
+      updated[idx] = updated[idx].copyWith(qty: currentQty + 1);
       state = updated;
     } else {
       state = [...state, CartItem(product: p, qty: 1)];
     }
+    return true;
   }
 
-  void increment(String productId) {
-    state = [
-      for (final c in state)
-        if (c.product.id == productId) c.copyWith(qty: c.qty + 1) else c,
-    ];
+  /// Tambah qty item yang sudah ada. Return false bila melebihi stok.
+  bool increment(String productId) {
+    final idx = state.indexWhere((c) => c.product.id == productId);
+    if (idx < 0) return false;
+    final c = state[idx];
+    if (c.qty + 1 > c.product.stock) return false;
+    final updated = [...state];
+    updated[idx] = c.copyWith(qty: c.qty + 1);
+    state = updated;
+    return true;
   }
 
   void decrement(String productId) {
@@ -83,6 +129,7 @@ Future<void> checkout({
   required List<CartItem> items,
   required double paid,
   required String paymentMethod,
+  String? shiftId,
 }) async {
   final db = await LocalDb.instance;
   final localId = const Uuid().v4();
@@ -95,7 +142,7 @@ Future<void> checkout({
 
   await db.insert('transactions', {
     'local_id': localId,
-    'shift_id': null,
+    'shift_id': shiftId,
     'subtotal': subtotal,
     'tax': tax,
     'discount': discount,
@@ -116,6 +163,12 @@ Future<void> checkout({
       'qty': c.qty,
       'subtotal': c.subtotal,
     });
+    // Kurangi stok di cache lokal (optimistic) — server dikurangi oleh
+    // trigger decrement_stock saat item ter-sync.
+    await db.rawUpdate(
+      'UPDATE products SET stock = stock - ? WHERE id = ?',
+      [c.qty, c.product.id],
+    );
   }
 
   // Best-effort sync (tidak menghalangi UI kalau offline).

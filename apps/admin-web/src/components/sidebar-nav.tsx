@@ -2,35 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  LayoutDashboard,
-  Package,
-  Tags,
-  BarChart3,
-  ReceiptText,
-  Boxes,
-  History,
-  QrCode,
-} from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const items = [
-  { href: "/", label: "Beranda", icon: LayoutDashboard },
-  { href: "/products", label: "Produk", icon: Package },
-  { href: "/categories", label: "Kategori", icon: Tags },
-  { href: "/stock", label: "Stok", icon: Boxes },
-  { href: "/transactions", label: "Transaksi", icon: ReceiptText },
-  { href: "/shifts", label: "Shift", icon: History },
-  { href: "/payment-methods", label: "Pembayaran", icon: QrCode },
-  { href: "/reports", label: "Laporan", icon: BarChart3 },
-];
+import { navItems } from "@/components/nav-items";
 
 export function SidebarNav() {
   const pathname = usePathname();
 
   return (
     <div className="flex flex-col">
-      {items.map(({ href, label, icon: Icon }) => {
+      {navItems.map(({ href, label, icon: Icon }) => {
         const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
         return (
           <Link

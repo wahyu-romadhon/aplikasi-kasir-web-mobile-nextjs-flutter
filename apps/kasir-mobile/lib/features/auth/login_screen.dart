@@ -28,8 +28,11 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
     try {
+      final raw = _emailCtrl.text.trim();
+      // "demo" → akun demo internal.
+      final identifier = raw.toLowerCase() == 'demo' ? 'demo@kasirku.app' : raw;
       await Supabase.instance.client.auth.signInWithPassword(
-        email: _emailCtrl.text.trim(),
+        email: identifier,
         password: _passwordCtrl.text,
       );
     } on AuthException catch (e) {

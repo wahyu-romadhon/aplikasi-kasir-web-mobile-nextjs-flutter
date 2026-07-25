@@ -23,7 +23,7 @@ class _OpenShiftScreenState extends ConsumerState<OpenShiftScreen> {
     super.dispose();
   }
 
-  double get _amount => double.tryParse(_ctrl.text.replaceAll('.', '')) ?? 0;
+  double get _amount => parseMoney(_ctrl.text);
 
   Future<void> _open() async {
     setState(() => _loading = true);
@@ -99,6 +99,7 @@ class _OpenShiftScreenState extends ConsumerState<OpenShiftScreen> {
                       TextField(
                         controller: _ctrl,
                         keyboardType: TextInputType.number,
+                        inputFormatters: [ThousandsInputFormatter()],
                         onChanged: (_) => setState(() {}),
                         decoration: const InputDecoration(
                           labelText: 'Modal Awal',
@@ -117,7 +118,7 @@ class _OpenShiftScreenState extends ConsumerState<OpenShiftScreen> {
                             .map((n) => ActionChip(
                                   label: Text(n == 0 ? 'Rp 0' : formatRupiah(n)),
                                   onPressed: () {
-                                    _ctrl.text = n.toString();
+                                    _ctrl.text = formatThousands(n);
                                     setState(() {});
                                   },
                                 ))

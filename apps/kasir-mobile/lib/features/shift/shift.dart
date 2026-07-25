@@ -55,3 +55,41 @@ Future<void> closeShift(String shiftId, double closingCash) async {
     'closed_at': DateTime.now().toUtc().toIso8601String(),
   }).eq('id', shiftId);
 }
+
+/// Ringkasan penjualan satu shift.
+class ShiftSummary {
+  final double totalSales;
+  final double cashSales;
+  final int count;
+  final Map<String, double> byMethod;
+  const ShiftSummary({
+    required this.totalSales,
+    required this.cashSales,
+    required this.count,
+    required this.byMethod,
+  });
+}
+
+/// Hitung penjualan shift dari transaksi milik kasir (RLS: baca transaksi sendiri).
+Future<ShiftSummary> fetchShiftSummary(String shiftId) async {
+  final sb = Supabase.instance.client;
+  final rows = await sb
+      .from('transactions')
+      .select('total, payment_method')
+      .eq('shift_id', shiftId)
+      .eq('status', 'completed');
+
+  double total = 0, cash = 0;
+  int count = 0;
+  final byMethod = <String, double>{};
+  for (final r in (rows as List)) {
+    final t = (r['total'] as num).toDouble();
+    final m = (r['payment_method'] as String?) ?? 'cash';
+    total += t;
+    count++;
+    byMethod[m] = (byMethod[m] ?? 0) + t;
+    if (m == 'cash') cash += t;
+  }
+  return ShiftSummary(
+      totalSales: total, cashSales: cash, count: count, byMethod: byMethod);
+}

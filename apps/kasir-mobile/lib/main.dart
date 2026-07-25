@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/constants/app_colors.dart';
 import 'core/constants/app_typography.dart';
+import 'core/license/license_status.dart';
 import 'features/auth/login_screen.dart';
 import 'features/pos/pos_screen.dart';
 import 'features/shift/open_shift_screen.dart';
@@ -30,6 +31,24 @@ class KasirApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       home: const AuthGate(),
+      builder: (context, child) {
+        return Stack(
+          children: [
+            ?child,
+            // Stempel TRIAL samar di seluruh layar bila lisensi trial.
+            Positioned.fill(
+              child: Consumer(
+                builder: (context, ref, _) {
+                  final label = ref.watch(licenseWatermarkProvider).valueOrNull;
+                  return label != null
+                      ? Watermark(text: label)
+                      : const SizedBox.shrink();
+                },
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

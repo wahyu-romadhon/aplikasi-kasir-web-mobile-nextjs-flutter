@@ -60,13 +60,18 @@ export function ProductsManager({
   storeId,
   initial,
   categories,
+  productLimit,
+  planLabel,
 }: {
   storeId: string;
   initial: Product[];
   categories: Category[];
+  productLimit?: number | null;
+  planLabel?: string;
 }) {
   const supabase = createClient();
   const [rows, setRows] = useState<Product[]>(initial);
+  const atLimit = productLimit != null && rows.length >= productLimit;
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -99,6 +104,12 @@ export function ProductsManager({
   }
 
   function openCreate() {
+    if (atLimit) {
+      toast.error(`Batas produk akun ${planLabel} tercapai (${productLimit})`, {
+        description: "Upgrade ke langganan berbayar untuk menambah lebih banyak produk.",
+      });
+      return;
+    }
     setEditing(null);
     setForm(emptyForm);
     resetImage();
@@ -145,6 +156,10 @@ export function ProductsManager({
     const price = Number(form.price);
     if (!Number.isFinite(price) || price < 0) {
       toast.error("Harga jual tidak valid");
+      return;
+    }
+    if (!editing && productLimit != null && rows.length >= productLimit) {
+      toast.error(`Batas produk akun ${planLabel} tercapai (${productLimit})`);
       return;
     }
     setSaving(true);
@@ -201,11 +216,26 @@ export function ProductsManager({
             Kelola daftar produk, harga, stok, dan gambar.
           </p>
         </div>
-        <Button onClick={openCreate}>
+        <Button onClick={openCreate} disabled={atLimit}>
           <Plus />
           Tambah Produk
         </Button>
       </div>
+
+      {productLimit != null && (
+        <div
+          className={
+            "rounded-xl border px-4 py-3 text-sm " +
+            (atLimit
+              ? "border-warning/30 bg-warning/10"
+              : "border-border bg-muted/40")
+          }
+        >
+          Akun <strong>{planLabel}</strong> dibatasi maksimal{" "}
+          <strong>{productLimit} produk</strong> — terpakai {rows.length}/{productLimit}.
+          {atLimit && " Batas tercapai. Upgrade ke langganan berbayar untuk menambah lagi."}
+        </div>
+      )}
 
       <Card className="shadow-sm">
         <CardHeader>

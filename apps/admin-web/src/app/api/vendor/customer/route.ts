@@ -22,12 +22,13 @@ export async function POST(req: Request) {
   const admin = await getSuperAdminUser();
   if (!admin) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
-  const { store_name, owner_name, owner_email, owner_password, trial_days } =
+  const { store_name, owner_name, owner_email, owner_password, trial_days, license_type } =
     await req.json();
   if (!store_name?.trim() || !owner_email?.trim() || !owner_password) {
     return NextResponse.json({ error: "missing_fields" }, { status: 400 });
   }
-  const days = Number(trial_days) > 0 ? Number(trial_days) : 3;
+  const status = license_type === "active" ? "active" : "trial";
+  const days = Number(trial_days) > 0 ? Number(trial_days) : status === "active" ? 30 : 3;
 
   // 1. Buat user owner.
   const { data: created, error: uErr } = await supabaseAdmin.auth.admin.createUser({
@@ -67,11 +68,12 @@ export async function POST(req: Request) {
   }
 
   // 4. Lisensi trial.
-  const licenseKey = "TRIAL-" + crypto.randomUUID().slice(0, 8);
+  const prefix = status === "active" ? "LIC-" : "TRIAL-";
+  const licenseKey = prefix + crypto.randomUUID().slice(0, 8);
   const { error: lErr } = await supabaseAdmin.from("licenses").insert({
     store_id: store.id,
     license_key: licenseKey,
-    status: "trial",
+    status,
     valid_until: new Date(Date.now() + days * DAY).toISOString(),
   });
   if (lErr) {

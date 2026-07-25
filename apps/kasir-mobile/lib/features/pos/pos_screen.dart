@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_spacing.dart';
+import '../../core/license/license_status.dart';
 import '../../core/utils/format.dart';
 import '../receipt/receipt_service.dart';
 import '../shift/shift.dart';
@@ -50,6 +51,18 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     }
   }
 
+  void _showShiftSummary() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _ShiftSummarySheet(shift: widget.shift),
+    );
+  }
+
   void _snack(String message, {Color color = AppColors.danger}) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -77,6 +90,10 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     final productsAsync = ref.watch(productsProvider);
     final count = ref.watch(cartCountProvider);
     final total = ref.watch(cartTotalProvider);
+    final cartItems = ref.watch(cartProvider);
+    final qtyById = <String, int>{
+      for (final c in cartItems) c.product.id: c.qty,
+    };
 
     return Scaffold(
       appBar: AppBar(
@@ -88,10 +105,19 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
             onSelected: (v) {
+              if (v == 'summary') _showShiftSummary();
               if (v == 'close') _closeShift();
               if (v == 'logout') _logout();
             },
             itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'summary',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.assessment_outlined, color: AppColors.primary),
+                  title: Text('Ringkasan Shift'),
+                ),
+              ),
               PopupMenuItem(
                 value: 'close',
                 child: ListTile(
@@ -132,16 +158,22 @@ class _PosScreenState extends ConsumerState<PosScreen> {
             child: GridView.builder(
               padding: const EdgeInsets.all(AppSpacing.md),
               gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 190,
-                mainAxisSpacing: AppSpacing.md,
-                crossAxisSpacing: AppSpacing.md,
-                childAspectRatio: 0.74,
+                maxCrossAxisExtent: 132,
+                mainAxisSpacing: AppSpacing.sm,
+                crossAxisSpacing: AppSpacing.sm,
+                childAspectRatio: 0.56,
               ),
               itemCount: products.length,
-              itemBuilder: (context, i) => _ProductCard(
-                product: products[i],
-                onTap: () => _addToCart(products[i]),
-              ),
+              itemBuilder: (context, i) {
+                final p = products[i];
+                return _ProductCard(
+                  product: p,
+                  qty: qtyById[p.id] ?? 0,
+                  onAdd: () => _addToCart(p),
+                  onRemove: () =>
+                      ref.read(cartProvider.notifier).decrement(p.id),
+                );
+              },
             ),
           );
         },
@@ -203,10 +235,12 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   Future<void> _shareReceipt(ReceiptData sale) async {
     try {
       final store = await ref.read(storeInfoProvider.future);
+      final watermark = await ref.read(licenseWatermarkProvider.future);
       await shareReceiptPdf(
         data: sale,
         storeName: store.name,
         footer: store.footer,
+        watermarkText: watermark,
       );
     } catch (e) {
       if (mounted) _snack('Gagal membuat struk: $e');
@@ -291,87 +325,220 @@ class _ProductImage extends StatelessWidget {
 
 class _ProductCard extends StatelessWidget {
   final Product product;
-  final VoidCallback onTap;
-  const _ProductCard({required this.product, required this.onTap});
+  final int qty;
+  final VoidCallback onAdd;
+  final VoidCallback onRemove;
+  const _ProductCard({
+    required this.product,
+    required this.qty,
+    required this.onAdd,
+    required this.onRemove,
+  });
 
   @override
   Widget build(BuildContext context) {
     final habis = product.stock <= 0;
-    return DecoratedBox(
+    final active = qty > 0;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOut,
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: active ? AppColors.primary : AppColors.border,
+          width: active ? 2 : 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
+            color: active
+                ? AppColors.primary.withValues(alpha: 0.18)
+                : Colors.black.withValues(alpha: 0.04),
+            blurRadius: active ? 14 : 10,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: habis ? null : onTap,
-          borderRadius: BorderRadius.circular(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      _ProductImage(product: product),
-                      if (habis)
-                        Container(
-                          color: Colors.black.withValues(alpha: 0.45),
-                          alignment: Alignment.center,
-                          child: const Text('HABIS',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 1)),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(AppSpacing.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Area gambar + nama + harga → ketuk untuk tambah.
+          Expanded(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: habis ? null : onAdd,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      product.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w600, fontSize: 14, height: 1.2),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      formatRupiah(product.price),
-                      style: const TextStyle(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w700,
-                        fontFeatures: [FontFeature.tabularFigures()],
+                    Expanded(
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          ClipRRect(
+                            borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(14)),
+                            child: _ProductImage(product: product),
+                          ),
+                          if (habis)
+                            Container(
+                              decoration: const BoxDecoration(
+                                color: Color(0x73000000),
+                                borderRadius: BorderRadius.vertical(
+                                    top: Radius.circular(14)),
+                              ),
+                              alignment: Alignment.center,
+                              child: const Text('HABIS',
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 1)),
+                            )
+                          else
+                            Positioned(
+                              top: 6,
+                              left: 6,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.55),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text('Stok ${product.stock}',
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w600)),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-                    Text(
-                      'Stok: ${product.stock}',
-                      style: TextStyle(
-                        color: habis ? AppColors.danger : AppColors.textSecondary,
-                        fontSize: 11,
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            product.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 12.5),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            formatRupiah(product.price),
+                            style: const TextStyle(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              fontFeatures: [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
-            ],
+            ),
           ),
+          // Kontrol tambah / kurang.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 2, 6, 6),
+            child: SizedBox(
+              height: 34,
+              child: habis
+                  ? const Center(
+                      child: Text('Habis',
+                          style: TextStyle(
+                              color: AppColors.danger,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600)),
+                    )
+                  : active
+                      ? DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryLight,
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                          child: Row(
+                            children: [
+                              _StepButton(
+                                  icon: Icons.remove,
+                                  color: AppColors.primary,
+                                  onTap: onRemove),
+                              Expanded(
+                                child: Center(
+                                  child: Text(
+                                    '$qty',
+                                    style: const TextStyle(
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 14,
+                                      fontFeatures: [FontFeature.tabularFigures()],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              _StepButton(
+                                  icon: Icons.add,
+                                  color: AppColors.primary,
+                                  onTap: onAdd),
+                            ],
+                          ),
+                        )
+                      : Material(
+                          color: AppColors.primaryLight,
+                          borderRadius: BorderRadius.circular(9),
+                          child: InkWell(
+                            onTap: onAdd,
+                            borderRadius: BorderRadius.circular(9),
+                            child: const Center(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.add, size: 16, color: AppColors.primary),
+                                  SizedBox(width: 4),
+                                  Text('Tambah',
+                                      style: TextStyle(
+                                          color: AppColors.primary,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 12.5)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StepButton extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+  const _StepButton({required this.icon, required this.color, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(9),
+        child: SizedBox(
+          width: 36,
+          height: 34,
+          child: Icon(icon, size: 18, color: color),
         ),
       ),
     );
@@ -624,11 +791,71 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
     super.dispose();
   }
 
-  double get _paid => double.tryParse(_paidCtrl.text.replaceAll('.', '')) ?? 0;
+  double get _paid => parseMoney(_paidCtrl.text);
 
   void _setPaid(double value) {
-    _paidCtrl.text = value.toStringAsFixed(0);
+    _paidCtrl.text = formatThousands(value);
     setState(() {});
+  }
+
+  void _showQrisFullScreen(QrisMethod qris, double total) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog.fullscreen(
+        backgroundColor: Colors.white,
+        child: SafeArea(
+          child: Column(
+            children: [
+              Align(
+                alignment: Alignment.topRight,
+                child: IconButton(
+                  icon: const Icon(Icons.close, size: 28),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+              Expanded(
+                child: Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(AppSpacing.xl),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(qris.label,
+                            style: const TextStyle(
+                                fontSize: 20, fontWeight: FontWeight.w700)),
+                        const SizedBox(height: AppSpacing.lg),
+                        Image.network(
+                          qris.imageUrl,
+                          width: MediaQuery.of(context).size.width * 0.85,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, _, _) =>
+                              const Text('Gambar QRIS gagal dimuat'),
+                        ),
+                        const SizedBox(height: AppSpacing.xl),
+                        const Text('Total Bayar',
+                            style: TextStyle(color: AppColors.textSecondary)),
+                        Text(
+                          formatRupiah(total),
+                          style: const TextStyle(
+                            fontSize: 30,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        const Text('Minta pembeli scan QRIS di atas',
+                            style: TextStyle(color: AppColors.textSecondary)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -708,6 +935,7 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
             TextField(
               controller: _paidCtrl,
               keyboardType: TextInputType.number,
+              inputFormatters: [ThousandsInputFormatter()],
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 labelText: 'Uang diterima',
@@ -760,41 +988,63 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
               ),
             ),
           ] else ...[
-            // Tampilkan QRIS untuk di-scan pembeli.
+            // Tampilkan QRIS untuk di-scan pembeli. Ketuk → layar penuh.
             Center(
-              child: Container(
-                padding: const EdgeInsets.all(AppSpacing.sm),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusControl),
-                  child: Image.network(
-                    _qris!.imageUrl,
-                    width: 240,
-                    height: 240,
-                    fit: BoxFit.contain,
-                    loadingBuilder: (context, child, progress) => progress == null
-                        ? child
-                        : const SizedBox(
+              child: GestureDetector(
+                onTap: () => _showQrisFullScreen(_qris!, total),
+                child: Container(
+                  padding: const EdgeInsets.all(AppSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(AppSpacing.radiusControl),
+                        child: Image.network(
+                          _qris!.imageUrl,
+                          width: 240,
+                          height: 240,
+                          fit: BoxFit.contain,
+                          loadingBuilder: (context, child, progress) =>
+                              progress == null
+                                  ? child
+                                  : const SizedBox(
+                                      width: 240,
+                                      height: 240,
+                                      child: Center(
+                                          child: CircularProgressIndicator()),
+                                    ),
+                          errorBuilder: (_, _, _) => const SizedBox(
                             width: 240,
                             height: 240,
-                            child: Center(child: CircularProgressIndicator()),
+                            child: Center(child: Text('Gambar QRIS gagal dimuat')),
                           ),
-                    errorBuilder: (_, _, _) => const SizedBox(
-                      width: 240,
-                      height: 240,
-                      child: Center(child: Text('Gambar QRIS gagal dimuat')),
-                    ),
+                        ),
+                      ),
+                      Positioned(
+                        right: 4,
+                        bottom: 4,
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.fullscreen,
+                              color: Colors.white, size: 18),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
             const SizedBox(height: AppSpacing.md),
             Text(
-              'Minta pembeli scan QRIS di atas (${_qris!.label})',
+              'Ketuk QRIS untuk layar penuh · ${_qris!.label}',
               textAlign: TextAlign.center,
               style: const TextStyle(color: AppColors.textSecondary),
             ),
@@ -809,6 +1059,140 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Ringkasan shift: modal awal + penjualan + total + perkiraan kas di laci.
+class _ShiftSummarySheet extends StatelessWidget {
+  final Shift shift;
+  const _ShiftSummarySheet({required this.shift});
+
+  Widget _line(String label, String value,
+      {bool bold = false, bool sub = false}) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: sub ? 1 : 3),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label,
+              style: TextStyle(
+                  color: sub ? AppColors.textSecondary : AppColors.textPrimary,
+                  fontSize: sub ? 12 : 14.5)),
+          Text(value,
+              style: TextStyle(
+                  fontWeight: bold
+                      ? FontWeight.w700
+                      : (sub ? FontWeight.w400 : FontWeight.w600),
+                  fontSize: sub ? 12 : 14.5,
+                  fontFeatures: const [FontFeature.tabularFigures()])),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: FutureBuilder<ShiftSummary>(
+          future: fetchShiftSummary(shift.id),
+          builder: (context, snap) {
+            Widget body;
+            if (snap.connectionState != ConnectionState.done) {
+              body = const SizedBox(
+                  height: 160,
+                  child: Center(child: CircularProgressIndicator()));
+            } else if (snap.hasError) {
+              body = SizedBox(
+                  height: 100,
+                  child: Center(child: Text('Gagal memuat: ${snap.error}')));
+            } else {
+              final s = snap.data!;
+              final nonCash = s.totalSales - s.cashSales;
+              final total = shift.openingCash + s.totalSales;
+              final cashInDrawer = shift.openingCash + s.cashSales;
+              body = Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _line('Modal Awal', formatRupiah(shift.openingCash)),
+                  const SizedBox(height: 6),
+                  _line('Penjualan Tunai', formatRupiah(s.cashSales)),
+                  if (nonCash > 0)
+                    _line('Penjualan Non-Tunai (QRIS/transfer)',
+                        formatRupiah(nonCash)),
+                  _line('Total Penjualan (${s.count} transaksi)',
+                      formatRupiah(s.totalSales),
+                      bold: true),
+                  const Divider(height: AppSpacing.xl),
+                  _line('Total (Modal + Penjualan)', formatRupiah(total),
+                      bold: true),
+                  const SizedBox(height: AppSpacing.md),
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryLight,
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
+                    ),
+                    child: Column(
+                      children: [
+                        const Text('Uang Tunai di Laci (fisik)',
+                            style: TextStyle(
+                                color: AppColors.textSecondary, fontSize: 12)),
+                        const SizedBox(height: 2),
+                        Text(
+                          formatRupiah(cashInDrawer),
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                        const Text('modal + tunai · non-tunai masuk rekening',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                color: AppColors.textSecondary, fontSize: 11)),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            }
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: AppSpacing.md),
+                    decoration: BoxDecoration(
+                      color: AppColors.border,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Text('Ringkasan Shift',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: AppSpacing.md),
+                body,
+                const SizedBox(height: AppSpacing.lg),
+                SizedBox(
+                  height: 48,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Tutup'),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -833,7 +1217,7 @@ class _CloseShiftSheetState extends State<_CloseShiftSheet> {
     super.dispose();
   }
 
-  double get _closing => double.tryParse(_ctrl.text.replaceAll('.', '')) ?? 0;
+  double get _closing => parseMoney(_ctrl.text);
 
   @override
   Widget build(BuildContext context) {
@@ -877,6 +1261,7 @@ class _CloseShiftSheetState extends State<_CloseShiftSheet> {
             controller: _ctrl,
             keyboardType: TextInputType.number,
             autofocus: true,
+            inputFormatters: [ThousandsInputFormatter()],
             onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(
               labelText: 'Setoran (uang di laci sekarang)',

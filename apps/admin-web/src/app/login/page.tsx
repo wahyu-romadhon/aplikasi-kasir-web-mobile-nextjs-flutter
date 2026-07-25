@@ -36,7 +36,13 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    // "demo" → akun demo internal.
+    const identifier =
+      email.trim().toLowerCase() === "demo" ? "demo@kasirku.app" : email.trim();
+    const { error } = await supabase.auth.signInWithPassword({
+      email: identifier,
+      password,
+    });
     if (error) {
       toast.error("Login gagal", { description: error.message });
       setLoading(false);
@@ -63,12 +69,12 @@ export default function LoginPage() {
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
-                type="email"
-                autoComplete="email"
+                type="text"
+                autoComplete="username"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="owner@toko.com"
+                placeholder="owner@toko.com  (atau: demo)"
               />
             </div>
             <div className="space-y-2">

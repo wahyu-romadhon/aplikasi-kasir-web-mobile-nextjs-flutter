@@ -4,7 +4,9 @@ import { Store, ShieldCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { isSuperAdmin } from "@/lib/superadmin";
 import { SidebarNav } from "@/components/sidebar-nav";
+import { MobileNav } from "@/components/mobile-nav";
 import { LogoutButton } from "@/components/logout-button";
+import { TrialWatermark } from "@/components/trial-watermark";
 
 export default async function DashboardLayout({
   children,
@@ -33,8 +35,19 @@ export default async function DashboardLayout({
     .eq("id", profile.store_id)
     .single();
 
+  const { data: license } = await supabase
+    .from("licenses")
+    .select("status, plan")
+    .eq("store_id", profile.store_id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const watermark =
+    license?.status === "trial" ? "Trial" : license?.plan === "demo" ? "Demo" : null;
+
   return (
     <div className="flex min-h-svh bg-background">
+      {watermark && <TrialWatermark label={watermark} />}
       {/* Sidebar — rail ikon yang mengembang saat hover (w-16 → w-60) */}
       <aside className="hidden w-16 shrink-0 md:block">
         <div className="group fixed inset-y-0 left-0 z-20 flex w-16 flex-col overflow-hidden border-r border-border bg-surface transition-[width] duration-200 ease-out hover:w-60 hover:shadow-xl">
@@ -85,17 +98,33 @@ export default async function DashboardLayout({
 
       {/* Konten */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-border bg-surface/95 px-6 backdrop-blur supports-backdrop-filter:bg-surface/80">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex size-9 items-center justify-center rounded-full bg-primary-light text-sm font-semibold text-primary">
-              {(profile.full_name?.[0] ?? "U").toUpperCase()}
+        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-border bg-surface/95 px-4 backdrop-blur supports-backdrop-filter:bg-surface/80 md:px-6">
+          <div className="flex min-w-0 items-center gap-2 md:gap-3">
+            <MobileNav
+              storeName={store?.name ?? "Toko"}
+              isSuperAdmin={isSuperAdmin(user.email)}
+            />
+            {/* Logo (mobile) */}
+            <div className="flex items-center gap-2 md:hidden">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
+                K
+              </div>
+              <span className="font-semibold">KasirKu</span>
             </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{profile.full_name}</p>
-              <p className="text-xs text-muted-foreground capitalize">{profile.role}</p>
+            {/* Info user (desktop) */}
+            <div className="hidden min-w-0 items-center gap-3 md:flex">
+              <div className="flex size-9 items-center justify-center rounded-full bg-primary-light text-sm font-semibold text-primary">
+                {(profile.full_name?.[0] ?? "U").toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{profile.full_name}</p>
+                <p className="text-xs text-muted-foreground capitalize">{profile.role}</p>
+              </div>
             </div>
           </div>
-          <LogoutButton />
+          <div className="hidden md:block">
+            <LogoutButton />
+          </div>
         </header>
         <main className="flex-1 p-6">{children}</main>
       </div>

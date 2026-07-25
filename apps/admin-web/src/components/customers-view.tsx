@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { UserPlus, MoreVertical, Store as StoreIcon } from "lucide-react";
+import { UserPlus, MoreVertical, Store as StoreIcon, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,7 +20,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -67,6 +67,7 @@ const emptyForm = {
   owner_name: "",
   owner_email: "",
   owner_password: "",
+  license_type: "trial" as "trial" | "active",
   trial_days: "3",
 };
 
@@ -255,7 +256,7 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
                     <TableHead>Status</TableHead>
                     <TableHead>Berlaku s/d</TableHead>
                     <TableHead className="text-right">Sisa</TableHead>
-                    <TableHead className="w-12" />
+                    <TableHead className="text-right">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -298,47 +299,57 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
                         </TableCell>
                         <TableCell>
                           {!c.isVendor && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger
-                                render={
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    disabled={busy === c.storeId}
-                                  />
-                                }
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                title="Edit data"
+                                onClick={() => openEdit(c)}
                               >
-                                <MoreVertical />
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => openEdit(c)}>
-                                  Edit data
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => act(c, "extend", 7)}>
-                                  Perpanjang 7 hari
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => act(c, "extend", 30)}>
-                                  Perpanjang 30 hari
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => act(c, "extend", 365)}>
-                                  Perpanjang 1 tahun
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => act(c, "trial", 3)}>
-                                  Set Trial 3 hari
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => act(c, "suspend")}>
-                                  Suspend
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  variant="destructive"
-                                  onClick={() => deleteCustomer(c)}
+                                <Pencil />
+                              </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger
+                                  render={
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      title="Kelola lisensi"
+                                      disabled={busy === c.storeId}
+                                    />
+                                  }
                                 >
-                                  Hapus pelanggan
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                                  <MoreVertical />
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuLabel>Lisensi</DropdownMenuLabel>
+                                  <DropdownMenuItem onClick={() => act(c, "extend", 7)}>
+                                    Perpanjang 7 hari
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => act(c, "extend", 30)}>
+                                    Perpanjang 30 hari
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => act(c, "extend", 365)}>
+                                    Perpanjang 1 tahun
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => act(c, "trial", 3)}>
+                                    Set Trial 3 hari
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => act(c, "suspend")}>
+                                    Suspend
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                title="Hapus pelanggan"
+                                className="text-danger hover:text-danger"
+                                onClick={() => deleteCustomer(c)}
+                              >
+                                <Trash2 />
+                              </Button>
+                            </div>
                           )}
                         </TableCell>
                       </TableRow>
@@ -357,7 +368,7 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
             <DialogHeader>
               <DialogTitle>Tambah Pelanggan</DialogTitle>
               <DialogDescription>
-                Membuat toko + akun owner + lisensi trial sekaligus.
+                Membuat toko + akun owner + lisensi sekaligus.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
@@ -392,27 +403,58 @@ export function CustomersView({ initial }: { initial: Customer[] }) {
                   required
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="c-pass">Password</Label>
-                  <Input
-                    id="c-pass"
-                    value={form.owner_password}
-                    onChange={(e) => setForm({ ...form, owner_password: e.target.value })}
-                    placeholder="min. 6 karakter"
-                    required
-                  />
+              <div className="space-y-2">
+                <Label htmlFor="c-pass">Password</Label>
+                <Input
+                  id="c-pass"
+                  value={form.owner_password}
+                  onChange={(e) => setForm({ ...form, owner_password: e.target.value })}
+                  placeholder="min. 6 karakter"
+                  required
+                />
+              </div>
+
+              {/* Tipe lisensi + masa berlaku */}
+              <div className="space-y-2">
+                <Label>Tipe Langganan</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(
+                    [
+                      ["trial", "Trial"],
+                      ["active", "Aktif (berbayar)"],
+                    ] as ["trial" | "active", string][]
+                  ).map(([val, label]) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() =>
+                        setForm({
+                          ...form,
+                          license_type: val,
+                          trial_days: val === "trial" ? "3" : "30",
+                        })
+                      }
+                      className={
+                        "rounded-lg border px-3 py-2 text-sm font-medium transition-colors " +
+                        (form.license_type === val
+                          ? "border-primary bg-primary-light text-primary"
+                          : "border-input text-muted-foreground hover:bg-muted")
+                      }
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="c-trial">Trial (hari)</Label>
-                  <Input
-                    id="c-trial"
-                    type="number"
-                    min="1"
-                    value={form.trial_days}
-                    onChange={(e) => setForm({ ...form, trial_days: e.target.value })}
-                  />
-                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="c-days">Masa berlaku (hari)</Label>
+                <Input
+                  id="c-days"
+                  type="number"
+                  min="1"
+                  value={form.trial_days}
+                  onChange={(e) => setForm({ ...form, trial_days: e.target.value })}
+                />
               </div>
             </div>
             <DialogFooter>
